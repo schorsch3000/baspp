@@ -1,0 +1,346 @@
+#!/usr/bin/env php
+<?php
+if ($_SERVER["argc"] !== 2) {
+    echo "baspp takes exactly one argument: the basic file to process\n";
+    exit(1);
+}
+$vars = [
+    "scopes" => [
+        "" => 0,
+        "$" => 0,
+        "%" => 0,
+    ],
+    "names" => [],
+];
+$consts = [];
+$labels = [];
+
+$inputFile = $_SERVER["argv"][1];
+
+if ($inputFile === "-h") {
+    echo <<<EOF
+baspp is a preprocessor for the BASIC language.
+    It processes your input file in the following steps:
+    1. includes files
+    2. removes comments
+    3. replaces constants
+    4. handles variables
+    5. replaces hex with decimal
+    6. replaces binary with decimal
+    7. removes spaces
+    8. removes empty lines
+    9. handles names labels
+
+
+    1: use
+<myfile.bas
+    to include a file named myfile.bas, or
+<|myfile.bas
+    to include the stdout from myfile.bas
+    
+    2: comments using // will be removed
+    
+    3: use
+~=foo=bar
+    to set a constant with the name foo to the value bar, then use 
+    ~foo
+    to replace it with bar.
+    Usefull e.g. for memoryadresses, eg. ~=screen_ram=1024
+
+    4: Variable handling.
+    As you know, variables in basic are basically 2 chars long, the rest is a bonus.
+    To be able to have long variablenames in your code you can use variablenames with $ as a prefix.
+    YOU EITHER SHOULD USE $ VARIABLES OR NOT, but never mix them.
+    baspp will replace your $ variables with 2 letter ones, and will keep track of the names.
+    you can use $ and % sufixes as normal, they will be handles seperately.
+    
+    5: hex numbers are replaced with decimal numbers, eg. 0x10 becomes 16
+    
+    6: binary numbers are replaced with decimal numbers, eg. 0b10000000 becomes 128
+    
+    7: spaces are removed to speed up execution
+    
+    8: empty lines are removed to speed up execution 
+    
+    9: keeping track of linenumers to use in goto / gosub is a nightmare.
+    with baspp you can have names labels that will be replaces with numbers.
+    use
+:mylabel
+    to define a label, and
+    >mylabel
+    to use it.         
+        
+    Additional notes:
+    constants, variables and labels are case sensitive, they must start with a letter and 
+    are optionally followed by letters, a numbers and, or underscores.
+    they have seperate namespaces, so you can have a constant, label and a variable with the same name.
+
+    All examples above starting at te leftmost position only work in the left most position.
+    
+EOF;
+    exit(0);
+}
+
+if (!is_file($inputFile)) {
+    echo "baspp: $inputFile is not a file\n";
+    exit(1);
+}
+
+$data = file($inputFile);
+
+doInclude($data, $inputFile);
+removeComments($data);
+getConstants($data, $consts);
+insertConstsants($data, $consts);
+handleVariables($data, $vars);
+handleHex($data);
+handleBinary($data);
+removeSpaces($data);
+trimLines($data);
+removeEmptyLines($data);
+renumberLines($data);
+
+getLabelPositions($data, $labels);
+renumberLines($data);
+replaceLabelMarkers($data, $labels);
+
+$maxNum = count($data) - 1;
+$maxLen = strlen($maxNum);
+foreach ($data as $lineNum => $line) {
+    echo str_pad($lineNum, $maxLen, " ", STR_PAD_LEFT) . " " . $line . "\n";
+}
+
+exit();
+
+function walkCodeBlocks(callable $walker, array &$data)
+{
+    foreach ($data as $lineNum => &$line) {
+        $line = explode('"', $line);
+
+        foreach ($line as $partNum => &$part) {
+            if ($partNum % 2) {
+                continue;
+            }
+            $part = explode("rem", $part, 2);
+            $walker($part[0], $lineNum);
+            $part = implode("rem", $part);
+        }
+
+        $line = implode('"', $line);
+    }
+}
+
+function replaceLabelMarkers(&$data, $labels)
+{
+    uksort($labels, function ($a, $b) {
+        return strlen($b) - strlen($a);
+    });
+    walkCodeBlocks(function (&$part) use ($labels) {
+        foreach ($labels as $labelName => $labelTarget) {
+            $part = str_replace($labelName, $labelTarget, $part);
+        }
+    }, $data);
+}
+
+function getLabelPositions(&$data, &$labels)
+{
+    $offset = 0;
+    foreach ($data as $lineNum => $line) {
+        if (preg_match('/^:([a-zA-Z0-9_]+)$/', $line, $m)) {
+            $name = ">" . $m[1];
+            if (isset($labels[$name])) {
+                logit("Duplicate label {$m[1]} at line $lineNum");
+                exit(1);
+            }
+
+            $labels[$name] = $lineNum - $offset++;
+            unset($data[$lineNum]);
+        }
+    }
+}
+
+function handleHex(&$data)
+{
+    walkCodeBlocks(function (&$part) {
+        $part = preg_replace_callback(
+            "/0x([0-9a-fA-F]+)/m",
+            function ($matches) {
+                return hexdec($matches[1]);
+            },
+            $part
+        );
+    }, $data);
+}
+
+function removeSpaces(&$data)
+{
+    walkCodeBlocks(function (&$part) {
+        $part = preg_replace("/\s+/", "", $part);
+    }, $data);
+}
+
+function handleBinary(&$data)
+{
+    walkCodeBlocks(function (&$part) {
+        $part = preg_replace_callback(
+            "/0b([01]+)/m",
+            function ($matches) {
+                return bindec($matches[1]);
+            },
+            $part
+        );
+    }, $data);
+}
+
+function handleVariables(&$data, &$vars)
+{
+    walkCodeBlocks(function (&$part) use (&$vars) {
+        $part = preg_replace_callback(
+            '/\$([a-zA-Z][a-zA-Z0-9_]*)([$%]?)/m',
+            function ($matches) use (&$vars) {
+                $name = $matches[0];
+                $scope = $matches[2];
+                if (!isset($vars["names"][$name])) {
+                    $vars["names"][$name] =
+                        varNameFromInt($vars["scopes"][$scope]++) . $scope;
+                }
+                return $vars["names"][$name];
+            },
+            $part
+        );
+    }, $data);
+}
+
+function insertConstsants(&$data, $consts)
+{
+    uksort($consts, function ($a, $b) {
+        return strlen($b) - strlen($a);
+    });
+    walkCodeBlocks(function (&$part) use ($consts) {
+        foreach ($consts as $constName => $constValue) {
+            $part = str_replace($constName, $constValue, $part);
+        }
+    }, $data);
+}
+
+function getConstants(&$data, &$consts)
+{
+    $data = preg_replace_callback(
+        "/^~=([a-zA-Z][a-zA-Z0-9_]*)=(.*)$/m",
+        function ($matches) use (&$consts) {
+            $name = "~" . $matches[1];
+            if (isset($consts[$name])) {
+                echo "Constant {$matches[1]} already defined\n";
+                exit(1);
+            }
+            $consts[$name] = $matches[2];
+            return "";
+        },
+        $data
+    );
+}
+
+function renumberLines(&$data)
+{
+    $data = array_values($data);
+}
+
+function doInclude(&$data, $inputFile)
+{
+    $includedFiles = [realpath($inputFile)];
+    do {
+        $loopAgain = false;
+        foreach ($data as &$line) {
+            if (!preg_match_all("/^<([|]?)(.*)$/", $line, $matches)) {
+                continue;
+            }
+            foreach ($matches[2] as $matchNum => $match) {
+                if (!is_file($match)) {
+                    echo "'$match' is not a file\n";
+                    exit(1);
+                }
+                $nextFile = realpath(dirname($inputFile) . "/" . $match);
+                if (in_array($nextFile, $includedFiles)) {
+                    logit(
+                        "file $nextFile already included, endless loop found, aborting"
+                    );
+                    exit(1);
+                }
+                $loopAgain = true;
+                $includedFiles[] = $nextFile;
+                if ($matches[1][$matchNum] === "|") {
+                    $output = null;
+                    $retCode = null;
+                    exec("timeout 10 $nextFile", $output, $retCode);
+                    if ($retCode !== 0) {
+                        echo "Error $retCode executing $nextFile, aborting\n";
+                        exit($retCode);
+                    }
+                    $replacement = implode("\n", $output);
+                } else {
+                    if (!is_readable($nextFile)) {
+                        echo "file $nextFile is not readable\n";
+                        exit(1);
+                    }
+                    $replacement = file_get_contents($nextFile);
+                }
+                $line = str_replace(
+                    $matches[0][$matchNum],
+                    $replacement,
+                    $line
+                );
+                break 2;
+            }
+        }
+        $data = implode("\n", $data);
+        $data = explode("\n", $data);
+    } while ($loopAgain);
+}
+
+function removeComments(&$data)
+{
+    walkCodeBlocks(function (&$part) {
+        $part = preg_replace("/\/\/.*$/m", "", $part);
+    }, $data);
+}
+
+function trimLines(&$data)
+{
+    foreach ($data as $lineNum => &$line) {
+        $line = trim($line);
+    }
+}
+
+function removeEmptyLines(&$data)
+{
+    $data = array_filter($data);
+}
+
+function logit($msg)
+{
+    fwrite(STDERR, $msg . "\n");
+}
+
+function varNameFromInt($int, $noBlacklistOffset = false)
+{
+    $blackList = ["if", "or", "ti", "fn", "st"];
+    $chars = [
+        "abcdefghijklmnopqrstuvwxyz",
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+    ];
+    if (!$noBlacklistOffset) {
+        $int += count($blackList);
+    }
+    $higher = $int % strlen($chars[1]);
+    $lower = floor($int / strlen($chars[1]));
+    if ($lower >= strlen($chars[0])) {
+        echo "too much vars used!\n";
+        exit(1);
+    }
+    $name = substr($chars[0], $lower, 1) . substr($chars[1], $higher, 1);
+    if (in_array($name, $blackList)) {
+        return varNameFromInt(array_search($name, $blackList), true);
+    }
+    return $name;
+}
+
