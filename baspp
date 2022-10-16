@@ -112,7 +112,7 @@ foreach ($data as $lineNum => $line) {
 
 exit();
 
-function walkCodeBlocks(callable $walker, array &$data)
+function walkCodeBlocks(callable $walker, array &$data, $strimRem = true)
 {
     foreach ($data as $lineNum => &$line) {
         $line = explode('"', $line);
@@ -121,7 +121,11 @@ function walkCodeBlocks(callable $walker, array &$data)
             if ($partNum % 2) {
                 continue;
             }
-            $part = explode("rem", $part, 2);
+            if ($strimRem) {
+                $part = explode("rem", $part, 2);
+            } else {
+                $part = [$part];
+            }
             $walker($part[0], $lineNum);
             $part = implode("rem", $part);
         }
@@ -299,9 +303,13 @@ function doInclude(&$data, $inputFile)
 
 function removeComments(&$data)
 {
-    walkCodeBlocks(function (&$part) {
-        $part = preg_replace("/\/\/.*$/m", "", $part);
-    }, $data);
+    walkCodeBlocks(
+        function (&$part) {
+            $part = preg_replace("/\/\/.*$/m", "", $part);
+        },
+        $data,
+        false
+    );
 }
 
 function trimLines(&$data)
