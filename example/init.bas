@@ -1,0 +1,2 @@
+poke ~BORDER_COLOR,0
+poke ~BACKGROUND_COLOR,0
