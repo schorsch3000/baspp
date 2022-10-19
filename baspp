@@ -60,7 +60,7 @@ foreach ($data as $lineNum => $line) {
 
 exit();
 
-function getOptions(&$data, $options)
+function getOptions(&$data, $options): void
 {
     foreach ($data as $lineNumber => $line) {
         foreach ($options->getOptionNames() as $name) {
@@ -72,16 +72,16 @@ function getOptions(&$data, $options)
     }
 }
 
-function removeHelperLines(&$data)
+function removeHelperLines(&$data): void
 {
     foreach ($data as $lineNum => $line) {
-        if (preg_match("/^#/", $line)) {
+        if (str_starts_with($line, "#")) {
             unset($data[$lineNum]);
         }
     }
 }
 
-function walkCodeBlocks(callable $walker, array &$data, $strimRem = true)
+function walkCodeBlocks(callable $walker, array &$data, $trimRem = true): void
 {
     foreach ($data as $lineNum => &$line) {
         $line = explode('"', $line);
@@ -90,7 +90,7 @@ function walkCodeBlocks(callable $walker, array &$data, $strimRem = true)
             if ($partNum % 2) {
                 continue;
             }
-            if ($strimRem) {
+            if ($trimRem) {
                 $part = explode("rem", $part, 2);
             } else {
                 $part = [$part];
@@ -103,7 +103,7 @@ function walkCodeBlocks(callable $walker, array &$data, $strimRem = true)
     }
 }
 
-function replaceLabelMarkers(&$data, $labels)
+function replaceLabelMarkers(&$data, $labels): void
 {
     uksort($labels, function ($a, $b) {
         return strlen($b) - strlen($a);
@@ -115,14 +115,14 @@ function replaceLabelMarkers(&$data, $labels)
     }, $data);
 }
 
-function getLabelPositions(&$data, &$labels)
+function getLabelPositions(&$data, &$labels): void
 {
     $offset = 0;
     foreach ($data as $lineNum => $line) {
         if (preg_match('/^:([a-zA-Z0-9_]+)$/', $line, $m)) {
             $name = ">" . $m[1];
             if (isset($labels[$name])) {
-                logit("Duplicate label {$m[1]} at line $lineNum");
+                logIt("Duplicate label $m[1] at line $lineNum");
                 exit(1);
             }
 
@@ -132,7 +132,7 @@ function getLabelPositions(&$data, &$labels)
     }
 }
 
-function handleHex(&$data)
+function handleHex(&$data): void
 {
     walkCodeBlocks(function (&$part) {
         $part = preg_replace_callback(
@@ -145,14 +145,14 @@ function handleHex(&$data)
     }, $data);
 }
 
-function removeSpaces(&$data)
+function removeSpaces(&$data): void
 {
     walkCodeBlocks(function (&$part) {
         $part = preg_replace("/\s+/", "", $part);
     }, $data);
 }
 
-function handleBinary(&$data)
+function handleBinary(&$data): void
 {
     walkCodeBlocks(function (&$part) {
         $part = preg_replace_callback(
@@ -165,7 +165,7 @@ function handleBinary(&$data)
     }, $data);
 }
 
-function handleVariables(&$data, &$vars)
+function handleVariables(&$data, &$vars): void
 {
     walkCodeBlocks(function (&$part) use (&$vars) {
         $part = preg_replace_callback(
@@ -190,7 +190,7 @@ function handleVariables(&$data, &$vars)
     }, $data);
 }
 
-function insertConstsants(&$data, $consts)
+function insertConstsants(&$data, $consts): void
 {
     uksort($consts, function ($a, $b) {
         return strlen($b) - strlen($a);
@@ -202,14 +202,14 @@ function insertConstsants(&$data, $consts)
     }, $data);
 }
 
-function getConstants(&$data, &$consts)
+function getConstants(&$data, &$consts): void
 {
     $data = preg_replace_callback(
         "/^~=([a-zA-Z][a-zA-Z0-9_]*)=(.*)$/m",
         function ($matches) use (&$consts) {
             $name = "~" . $matches[1];
             if (isset($consts[$name])) {
-                echo "Constant {$matches[1]} already defined\n";
+                echo "Constant $matches[1] already defined\n";
                 exit(1);
             }
             $consts[$name] = $matches[2];
@@ -219,7 +219,7 @@ function getConstants(&$data, &$consts)
     );
 }
 
-function renumberLines(&$data, Options $options)
+function renumberLines(&$data, Options $options): void
 {
     $in = array_values($data);
     $data = [];
@@ -227,8 +227,8 @@ function renumberLines(&$data, Options $options)
     foreach ($in as $line) {
         if (preg_match('/^#(\d+)$/', $line, $m)) {
             if ($lineNum >= $m[1]) {
-                logit(
-                    "Line number {$m[1]} is smaller than current line number $lineNum"
+                logIt(
+                    "Line number $m[1] is smaller than current line number $lineNum"
                 );
                 exit(1);
             }
@@ -241,7 +241,7 @@ function renumberLines(&$data, Options $options)
     }
 }
 
-function doInclude(&$data, $inputFile)
+function doInclude(&$data, $inputFile): void
 {
     $includedFiles = [realpath($inputFile)];
     do {
@@ -257,7 +257,7 @@ function doInclude(&$data, $inputFile)
                 }
                 $nextFile = realpath(dirname($inputFile) . "/" . $match);
                 if (in_array($nextFile, $includedFiles)) {
-                    logit(
+                    logIt(
                         "file $nextFile already included, endless loop found, aborting"
                     );
                     exit(1);
@@ -293,7 +293,7 @@ function doInclude(&$data, $inputFile)
     } while ($loopAgain);
 }
 
-function removeComments(&$data)
+function removeComments(&$data): void
 {
     walkCodeBlocks(
         function (&$part) {
@@ -304,24 +304,24 @@ function removeComments(&$data)
     );
 }
 
-function trimLines(&$data)
+function trimLines(&$data): void
 {
-    foreach ($data as $lineNum => &$line) {
+    foreach ($data as &$line) {
         $line = trim($line);
     }
 }
 
-function removeEmptyLines(&$data)
+function removeEmptyLines(&$data): void
 {
     $data = array_filter($data);
 }
 
-function logit($msg)
+function logIt($msg): void
 {
     fwrite(STDERR, $msg . "\n");
 }
 
-function varNameFromInt($int, $noBlacklistOffset = false)
+function varNameFromInt($int, $noBlacklistOffset = false): string
 {
     $blackList = ["if", "or", "ti", "fn", "st"];
     $chars = [
@@ -344,7 +344,7 @@ function varNameFromInt($int, $noBlacklistOffset = false)
     return $name;
 }
 
-function help()
+function help(): void
 {
     echo <<<EOF
 baspp is a preprocessor for the BASIC language.
@@ -382,16 +382,16 @@ baspp is a preprocessor for the BASIC language.
     baspp will replace your $ variables with 2 letter ones, and will keep track of the names.
     you can use $ and % sufixes as normal, they will be handles seperately.
     
-    5: hex numbers are replaced with decimal numbers, eg. 0x10 becomes 16
+    5: hex numbers are replaced with decimal numbers, e.g. 0x10 becomes 16
     
-    6: binary numbers are replaced with decimal numbers, eg. 0b10000000 becomes 128
+    6: binary numbers are replaced with decimal numbers, e.g. 0b10000000 becomes 128
     
     7: spaces are removed to speed up execution
     
     8: empty lines are removed to speed up execution 
     
     9: keeping track of linenumers to use in goto / gosub is a nightmare.
-    with baspp you can have names labels that will be replaces with numbers.
+    with baspp you can have names labels that will be replaced with numbers.
     use
 :mylabel
     to define a label, and
@@ -399,7 +399,7 @@ baspp is a preprocessor for the BASIC language.
     to use it.         
         
     Additional notes:
-    constants, variables and labels are case sensitive, they must start with a letter and 
+    constants, variables and labels are case-sensitive, they must start with a letter and 
     are optionally followed by letters, a numbers and, or underscores.
     they have seperate namespaces, so you can have a constant, label and a variable with the same name.
 
@@ -421,18 +421,21 @@ class Options
         "CODE" => 2,
         "ARG" => 3,
     ];
-    private $optionNames = ["startLineNumber", "lineStep"];
+    private array $optionNames = ["startLineNumber", "lineStep"];
 
-    private $options = [
+    private array $options = [
         "startLineNumber" => 0,
         "lineStep" => 1,
     ];
 
-    private $optionsWeight = [
+    private array $optionsWeight = [
         "startLineNumber" => Options::OPTIONS_WEIGHT["DEFAULT"],
         "lineStep" => Options::OPTIONS_WEIGHT["DEFAULT"],
     ];
 
+    /**
+     * @throws Exception
+     */
     public function __construct()
     {
         foreach ($this->optionNames as $optionName) {
@@ -452,10 +455,14 @@ class Options
             }
         }
     }
-    public function getOptionNames()
+    public function getOptionNames(): array
     {
         return $this->optionNames;
     }
+
+    /**
+     * @throws Exception
+     */
     public function __get($name)
     {
         if (!in_array($name, $this->optionNames)) {
@@ -464,7 +471,10 @@ class Options
         return $this->options[$name];
     }
 
-    private function set($name, $value, $weight)
+    /**
+     * @throws Exception
+     */
+    private function set($name, $value, $weight): void
     {
         if (!in_array($name, $this->optionNames)) {
             throw new Exception("Invalid option name: $name");
@@ -473,12 +483,15 @@ class Options
             $this->options[$name] = $value;
             $this->optionsWeight[$name] = $weight;
         } else {
-            logit(
+            logIt(
                 "Option $name already set with higher weight, ignoring $value"
             );
         }
     }
 
+    /**
+     * @throws Exception
+     */
     public function __set($name, $value)
     {
         $this->set($name, $value, Options::OPTIONS_WEIGHT["CODE"]);
