@@ -74,6 +74,9 @@ will result in:
 10 print 10
 ```
 
+This can be useful to have a known entry point for your program.
+in this example you might want to start your program with `run 10`
+
 Caution: If you use the `#<linenumber>` directive, you need to make sure that
 the previous line numbers are smaller.
 
