@@ -200,15 +200,21 @@ function handleVariables(&$data, &$vars)
 {
     walkCodeBlocks(function (&$part) use (&$vars) {
         $part = preg_replace_callback(
-            '/\$([a-zA-Z][a-zA-Z0-9_]*)([$%]?)/m',
+            '/\$([a-zA-Z][a-zA-Z0-9_]*)([$%]?)([+]{2}|-{2})?/m',
             function ($matches) use (&$vars) {
                 $name = $matches[0];
                 $scope = $matches[2];
+                $incdec = $matches[3] ?? "";
+                $incdec = substr($incdec, 0, 1);
                 if (!isset($vars["names"][$name])) {
                     $vars["names"][$name] =
                         varNameFromInt($vars["scopes"][$scope]++) . $scope;
                 }
-                return $vars["names"][$name];
+                $return = $vars["names"][$name];
+                if ($incdec) {
+                    $return .= "=" . $return . $incdec . "1";
+                }
+                return $return;
             },
             $part
         );

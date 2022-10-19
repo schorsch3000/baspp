@@ -10,6 +10,7 @@
 - constants that will just be replaced with their values
 - hex and binary notation
 - usefull variable names
+- simple increment and decrement
 - include file content or command output
 - remove spaces
 
@@ -123,6 +124,49 @@ st
 ```
 
 you can use `ti` or `st` as variable names if you need them
+
+#### increment and decrement
+
+When using `$` variables you can use `++` and `--` to increment and decrement the variable.
+This simply adds or subtracts 1 from the variable.
+
+```basic
+$myVar1=0
+$myVar1++
+$myVar2=2
+$myVar2--
+```
+
+will result in:
+
+```basic
+0 af=0
+1 af=af+1
+2 ag=2
+3 ag=ag-1
+```
+
+**Cautions:**
+You can't use `++` or `--` on variables that are not `$` variables.
+You can't use `++` or `--` on variables that are not defined before.
+You can't use `++` or `--` inplace, or you can, baspp is fine with it, but the results are not what you like them to:
+
+```basic
+$myVar1=0
+:loop
+print $myVar1++
+goto >loop
+```
+
+will result in:
+
+```basic
+0 af=0
+1 printaf=af+1
+2 goto1
+```
+
+which is really not what you whant it to be
 
 ### include
 
