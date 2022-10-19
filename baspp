@@ -1,9 +1,5 @@
 #!/usr/bin/env php
 <?php
-if ($_SERVER["argc"] !== 2) {
-    echo "baspp takes exactly one argument: the basic file to process\n";
-    exit(1);
-}
 $vars = [
     "scopes" => [
         "" => 0,
@@ -14,70 +10,20 @@ $vars = [
 ];
 $consts = [];
 $labels = [];
+$options = new Options();
 
-$inputFile = $_SERVER["argv"][1];
+if (count($_SERVER["argv"]) !== 2) {
+    echo "baspp takes only a single file and the following options as argument\n";
+    foreach ($options->getOptionNames() as $name) {
+        echo "  --$name=<value>\n";
+    }
+    exit(1);
+}
+
+$inputFile = array_pop($_SERVER["argv"]);
 
 if ($inputFile === "-h") {
-    echo <<<EOF
-baspp is a preprocessor for the BASIC language.
-    It processes your input file in the following steps:
-    1. includes files
-    2. removes comments
-    3. replaces constants
-    4. handles variables
-    5. replaces hex with decimal
-    6. replaces binary with decimal
-    7. removes spaces
-    8. removes empty lines
-    9. handles names labels
-
-
-    1: use
-<myfile.bas
-    to include a file named myfile.bas, or
-<|myfile.bas
-    to include the stdout from myfile.bas
-    
-    2: comments using // will be removed
-    
-    3: use
-~=foo=bar
-    to set a constant with the name foo to the value bar, then use 
-    ~foo
-    to replace it with bar.
-    Usefull e.g. for memoryadresses, eg. ~=screen_ram=1024
-
-    4: Variable handling.
-    As you know, variables in basic are basically 2 chars long, the rest is a bonus.
-    To be able to have long variablenames in your code you can use variablenames with $ as a prefix.
-    YOU EITHER SHOULD USE $ VARIABLES OR NOT, but never mix them.
-    baspp will replace your $ variables with 2 letter ones, and will keep track of the names.
-    you can use $ and % sufixes as normal, they will be handles seperately.
-    
-    5: hex numbers are replaced with decimal numbers, eg. 0x10 becomes 16
-    
-    6: binary numbers are replaced with decimal numbers, eg. 0b10000000 becomes 128
-    
-    7: spaces are removed to speed up execution
-    
-    8: empty lines are removed to speed up execution 
-    
-    9: keeping track of linenumers to use in goto / gosub is a nightmare.
-    with baspp you can have names labels that will be replaces with numbers.
-    use
-:mylabel
-    to define a label, and
-    >mylabel
-    to use it.         
-        
-    Additional notes:
-    constants, variables and labels are case sensitive, they must start with a letter and 
-    are optionally followed by letters, a numbers and, or underscores.
-    they have seperate namespaces, so you can have a constant, label and a variable with the same name.
-
-    All examples above starting at te leftmost position only work in the left most position.
-    
-EOF;
+    help();
     exit(0);
 }
 
@@ -89,6 +35,7 @@ if (!is_file($inputFile)) {
 $data = file($inputFile);
 
 doInclude($data, $inputFile);
+getOptions($data, $options);
 removeComments($data);
 getConstants($data, $consts);
 insertConstsants($data, $consts);
@@ -98,10 +45,11 @@ handleBinary($data);
 removeSpaces($data);
 trimLines($data);
 removeEmptyLines($data);
-renumberLines($data);
+renumberLines($data, $options);
 
 getLabelPositions($data, $labels);
-renumberLines($data);
+renumberLines($data, $options);
+removeHelperLines($data);
 replaceLabelMarkers($data, $labels);
 
 $maxNum = count($data) - 1;
@@ -111,6 +59,27 @@ foreach ($data as $lineNum => $line) {
 }
 
 exit();
+
+function getOptions(&$data, $options)
+{
+    foreach ($data as $lineNumber => $line) {
+        foreach ($options->getOptionNames() as $name) {
+            if (preg_match("/^--$name=(.*)$/", $line, $m)) {
+                $options->$name = $m[1];
+                unset($data[$lineNumber]);
+            }
+        }
+    }
+}
+
+function removeHelperLines(&$data)
+{
+    foreach ($data as $lineNum => $line) {
+        if (preg_match("/^#/", $line)) {
+            unset($data[$lineNum]);
+        }
+    }
+}
 
 function walkCodeBlocks(callable $walker, array &$data, $strimRem = true)
 {
@@ -250,9 +219,26 @@ function getConstants(&$data, &$consts)
     );
 }
 
-function renumberLines(&$data)
+function renumberLines(&$data, Options $options)
 {
-    $data = array_values($data);
+    $in = array_values($data);
+    $data = [];
+    $lineNum = $options->startLineNumber;
+    foreach ($in as $line) {
+        if (preg_match('/^#(\d+)$/', $line, $m)) {
+            if ($lineNum >= $m[1]) {
+                logit(
+                    "Line number {$m[1]} is smaller than current line number $lineNum"
+                );
+                exit(1);
+            }
+            $lineNum = $m[1];
+            $data["#" . $lineNum] = $line;
+        } else {
+            $data[$lineNum] = $line;
+            $lineNum += $options->lineStep;
+        }
+    }
 }
 
 function doInclude(&$data, $inputFile)
@@ -356,5 +342,146 @@ function varNameFromInt($int, $noBlacklistOffset = false)
         return varNameFromInt(array_search($name, $blackList), true);
     }
     return $name;
+}
+
+function help()
+{
+    echo <<<EOF
+baspp is a preprocessor for the BASIC language.
+    It processes your input file in the following steps:
+    1. includes files
+    2. removes comments
+    3. replaces constants
+    4. handles variables
+    5. replaces hex with decimal
+    6. replaces binary with decimal
+    7. removes spaces
+    8. removes empty lines
+    9. handles names labels
+
+
+    1: use
+<myfile.bas
+    to include a file named myfile.bas, or
+<|myfile.bas
+    to include the stdout from myfile.bas
+    
+    2: comments using // will be removed
+    
+    3: use
+~=foo=bar
+    to set a constant with the name foo to the value bar, then use 
+    ~foo
+    to replace it with bar.
+    Usefull e.g. for memoryadresses, eg. ~=screen_ram=1024
+
+    4: Variable handling.
+    As you know, variables in basic are basically 2 chars long, the rest is a bonus.
+    To be able to have long variablenames in your code you can use variablenames with $ as a prefix.
+    YOU EITHER SHOULD USE $ VARIABLES OR NOT, but never mix them.
+    baspp will replace your $ variables with 2 letter ones, and will keep track of the names.
+    you can use $ and % sufixes as normal, they will be handles seperately.
+    
+    5: hex numbers are replaced with decimal numbers, eg. 0x10 becomes 16
+    
+    6: binary numbers are replaced with decimal numbers, eg. 0b10000000 becomes 128
+    
+    7: spaces are removed to speed up execution
+    
+    8: empty lines are removed to speed up execution 
+    
+    9: keeping track of linenumers to use in goto / gosub is a nightmare.
+    with baspp you can have names labels that will be replaces with numbers.
+    use
+:mylabel
+    to define a label, and
+    >mylabel
+    to use it.         
+        
+    Additional notes:
+    constants, variables and labels are case sensitive, they must start with a letter and 
+    are optionally followed by letters, a numbers and, or underscores.
+    they have seperate namespaces, so you can have a constant, label and a variable with the same name.
+
+    All examples above starting at te leftmost position only work in the left most position.
+    
+EOF;
+}
+
+/**
+ * @property int startLineNumber
+ * @property int lineStep
+ */
+
+class Options
+{
+    const OPTIONS_WEIGHT = [
+        "DEFAULT" => 0,
+        "ENV" => 1,
+        "CODE" => 2,
+        "ARG" => 3,
+    ];
+    private $optionNames = ["startLineNumber", "lineStep"];
+
+    private $options = [
+        "startLineNumber" => 0,
+        "lineStep" => 1,
+    ];
+
+    private $optionsWeight = [
+        "startLineNumber" => Options::OPTIONS_WEIGHT["DEFAULT"],
+        "lineStep" => Options::OPTIONS_WEIGHT["DEFAULT"],
+    ];
+
+    public function __construct()
+    {
+        foreach ($this->optionNames as $optionName) {
+            $env = getenv(strtoupper($optionName));
+            if (false !== $env) {
+                $this->set($optionName, $env, Options::OPTIONS_WEIGHT["ENV"]);
+            }
+            foreach ($_SERVER["argv"] as $k => $arg) {
+                if (preg_match("/^--$optionName=(.*)$/", $arg, $m)) {
+                    $this->set(
+                        $optionName,
+                        $m[1],
+                        Options::OPTIONS_WEIGHT["ARG"]
+                    );
+                    unset($_SERVER["argv"][$k]);
+                }
+            }
+        }
+    }
+    public function getOptionNames()
+    {
+        return $this->optionNames;
+    }
+    public function __get($name)
+    {
+        if (!in_array($name, $this->optionNames)) {
+            throw new Exception("Invalid option name: $name");
+        }
+        return $this->options[$name];
+    }
+
+    private function set($name, $value, $weight)
+    {
+        if (!in_array($name, $this->optionNames)) {
+            throw new Exception("Invalid option name: $name");
+        }
+        if ($this->optionsWeight[$name] < $weight) {
+            $this->options[$name] = $value;
+            $this->optionsWeight[$name] = $weight;
+        } else {
+            logit(
+                "Option $name already set with higher weight, ignoring $value"
+            );
+        }
+    }
+
+    public function __set($name, $value)
+    {
+        $this->set($name, $value, Options::OPTIONS_WEIGHT["CODE"]);
+    }
 }
 

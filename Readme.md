@@ -16,16 +16,66 @@
 
 ## Usage
 
-To run `baspp` just call it with the filename as a single parameter.
+To run `baspp` just call it with the filename as a single parameter, optional options might be set.
 
 To create a useable basic programm for eg. the c64 you need to run `petcat` on the output of `baspp`.
 `baspp myinput.bas | petcat -w2 -o myoutput.prg`
+
+## Options
+
+Currently, there are 2 options implemented:
+
+- startLineNumber which defaults to 0
+- lineStep which defaults to 1
+
+options can be set in 3 ways:
+
+- as a command line parameter
+- in the source code
+- as an environment variable
+
+this list is in the weighted order, so if you set the same option in multiple ways, the one topmost in the list above will be used.
+
+### Command line parameter
+
+The syntax for the command line parameter is `--optionName=optionValue`.
+
+### Source code
+
+The syntax for the source code is the same as for the CLI `--optionName=optionValue` and needs to be without padding in a single line.
+
+### Environment variable
+
+The syntax for the environment variable is `OPTIONNAME=optionValue`, yes, environment variables have to be all uppercase.
 
 ## syntax
 
 ### line numbers
 
 Just write your code as you would do it in basic, but without line numbers. `baspp` will add them for you.
+Line numbering is done starting by the option `startLineNumber` and incremented by the option `lineStep`,
+Which is starting by 0 and incremented by 1 by default.
+
+If you want to have a specific line of code at a specific line number, you can use the `#<linenumber>` directive.
+with the default options this example:
+
+```basic
+print 0
+print 1
+#10
+print 10
+```
+
+will result in:
+
+```basic
+0 print 0
+1 print 1
+10 print 10
+```
+
+Caution: If you use the `#<linenumber>` directive, you need to make sure that
+the previous line numbers are smaller.
 
 ### labels
 
