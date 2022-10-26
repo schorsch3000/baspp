@@ -46,11 +46,11 @@ removeSpaces($data);
 trimLines($data);
 removeEmptyLines($data);
 renumberLines($data, $options);
-
-getLabelPositions($data, $labels);
+getLabelPositions($data, $labels, $options);
 renumberLines($data, $options);
 removeHelperLines($data);
 replaceLabelMarkers($data, $labels);
+magicConstants($data, $options);
 
 $maxNum = count($data) - 1;
 $maxLen = strlen($maxNum);
@@ -59,6 +59,13 @@ foreach ($data as $lineNum => $line) {
 }
 
 exit();
+
+function magicConstants(&$data, $options)
+{
+    walkCodeBlocks(function (&$part, $line) use ($options) {
+        $part = str_replace("__LINE__", $line, $part);
+    }, $data);
+}
 
 function getOptions(&$data, $options): void
 {
@@ -115,7 +122,7 @@ function replaceLabelMarkers(&$data, $labels): void
     }, $data);
 }
 
-function getLabelPositions(&$data, &$labels): void
+function getLabelPositions(&$data, &$labels, Options &$options): void
 {
     $offset = 0;
     foreach ($data as $lineNum => $line) {
@@ -126,7 +133,8 @@ function getLabelPositions(&$data, &$labels): void
                 exit(1);
             }
 
-            $labels[$name] = $lineNum - $offset++;
+            $labels[$name] = $lineNum - $offset;
+            $offset += $options->lineStep;
             unset($data[$lineNum]);
         }
     }
