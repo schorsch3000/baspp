@@ -13,6 +13,8 @@
 - simple increment and decrement
 - include file content or command output
 - remove spaces
+- magic constants
+-
 
 ## Usage
 
@@ -230,3 +232,43 @@ include statements must not be indented or mixed up with anything in their lines
 ### remove spaces
 
 since the resulting code is not meant to be read by humans, all spaces in your basic code are removed to speed up execution and lower filesize.
+
+### magic constants
+
+Currently, there is only one magic constant implemented: `__LINE__` which will be replaced with the current line number of the rendered basic file.
+example:
+
+```basic
+print __LINE__
+#10
+print __LINE__
+```
+
+will result in
+
+```basic
+0 print0
+10 print10
+```
+
+This is useful for example while debugging, or if you want to load additional files at runtime, which will reenter your programm.
+
+Example:
+
+```basic
+print "loading file"
+if peek(42) < __LINE__ then poke 42, __LINE__ : load "a",8,1 //this will load 'a' into some position in ram and restarts this programm assuming it will not overwrite basic ram, eg: loading a charset
+if peek(42) < __LINE__ then poke 42, __LINE__ : load "b",8,1
+if peek(42) < __LINE__ then poke 42, __LINE__ : load "c",8,1
+print "doing something with the loaded data"
+```
+
+will result in
+
+```basic
+0 print"loading file"
+1 ifpeek(42)<1thenpoke42,1:load"a",8,1
+2 ifpeek(42)<2thenpoke42,2:load"b",8,1
+3 ifpeek(42)<3thenpoke42,3:load"c",8,1
+4 print"doing something with the loaded data"
+```
