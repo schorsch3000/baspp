@@ -36,7 +36,7 @@ if (!is_file($inputFile)) {
 
 $data = file($inputFile);
 
-doInclude($data, $inputFile);
+doInclude($data, $inputFile, $options);
 getOptions($data, $options);
 removeComments($data);
 getConstants($data, $consts);
@@ -242,7 +242,7 @@ function renumberLines(&$data, Options $options): void {
     }
 }
 
-function doInclude(&$data, $inputFile): void {
+function doInclude(&$data, $inputFile, Options $options): void {
     $includedFiles = [realpath($inputFile)];
     do {
         $loopAgain = false;
@@ -265,6 +265,10 @@ function doInclude(&$data, $inputFile): void {
                 $loopAgain = true;
                 $includedFiles[] = $nextFile;
                 if ($matches[1][$matchNum] === '|') {
+                    if (!$options->allowExecute) {
+                        logIt('Execution of files is not allowed!');
+                        exit(1);
+                    }
                     $output = null;
                     $retCode = null;
                     $cmd = escapeshellarg(
@@ -408,6 +412,7 @@ function help(): void {
 /**
  * @property int startLineNumber
  * @property int lineStep
+ * @property bool allowExecute
  */
 
 class Options {
@@ -417,7 +422,11 @@ class Options {
         'CODE' => 2,
         'ARG' => 3,
     ];
-    private array $optionNames = ['startLineNumber', 'lineStep'];
+    private array $optionNames = [
+        'startLineNumber',
+        'lineStep',
+        'allowExecute',
+    ];
     private array $optionConfig = [
         'startLineNumber' => [
             'type' => 'int',
@@ -429,16 +438,26 @@ class Options {
             'min' => 1,
             'max' => 0xffffff,
         ],
+        'allowExecute' => [
+            'type' => 'bool',
+            'allowed_weights' => [
+                self::OPTIONS_WEIGHT['DEFAULT'],
+                self::OPTIONS_WEIGHT['ENV'],
+                self::OPTIONS_WEIGHT['ARG'],
+            ],
+        ],
     ];
 
     private array $options = [
         'startLineNumber' => 0,
         'lineStep' => 1,
+        'allowExecute' => false,
     ];
 
     private array $optionsWeight = [
         'startLineNumber' => Options::OPTIONS_WEIGHT['DEFAULT'],
         'lineStep' => Options::OPTIONS_WEIGHT['DEFAULT'],
+        'allowExecute' => Options::OPTIONS_WEIGHT['DEFAULT'],
     ];
 
     /**
@@ -486,9 +505,22 @@ class Options {
             case 'int':
                 $value = (int) $value;
                 break;
+            case 'bool':
+                $value = (bool) $value;
+                break;
             default:
                 throw new Exception("Invalid type: $myConfig[type]");
                 break;
+        }
+
+        if (
+            isset($myConfig['allowed_weights']) &&
+            !in_array($weight, $myConfig['allowed_weights'])
+        ) {
+            throw new Exception(
+                "Invalid weight $weight for option $name, allowed weights are: " .
+                    implode(', ', $myConfig['allowed_weights']),
+            );
         }
 
         if (isset($myConfig['min']) && $value < $myConfig['min']) {
