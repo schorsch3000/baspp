@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
-prettier -w baspp "*.md"
+prettier -w "*.md"
+onsave baspp
 shellcheck -- *.sh
 shfmt -w -- *.sh
 ./testrunner.sh
