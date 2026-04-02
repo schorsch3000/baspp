@@ -9,7 +9,7 @@ print
 print
 
 :loop
-  for $i=0 to $textlen
+  for $i=0 to ~textlen
     print $text$($i)
     poke ~TEXT_COLOR,int(rnd(1)*14+1)
   next $i

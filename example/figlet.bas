@@ -3,7 +3,7 @@ text="$(figlet -f letter.tlf BASPP | grep -v "^\s*$")"
 lines="$(echo "$text" | wc -l)"
 
 echo "dim \$text\$($lines)"
-echo "\$textlen=$lines"
+echo "~=textlen=$lines"
 I=0
 while IFS= read -r line
 do
