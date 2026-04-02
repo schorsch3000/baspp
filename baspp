@@ -13,9 +13,9 @@ $labels = [];
 $options = new Options();
 
 if (count($_SERVER["argv"]) !== 2) {
-    echo "baspp takes only a single file and the following options as argument\n";
+    logIt("baspp takes only a single file and the following options as argument");
     foreach ($options->getOptionNames() as $name) {
-        echo "  --$name=<value>\n";
+        logIt("  --$name=<value>");
     }
     exit(1);
 }
@@ -28,7 +28,7 @@ if ($inputFile === "-h") {
 }
 
 if (!is_file($inputFile)) {
-    echo "baspp: $inputFile is not a file\n";
+    logIt("baspp: $inputFile is not a file");
     exit(1);
 }
 
@@ -52,7 +52,11 @@ removeHelperLines($data);
 replaceLabelMarkers($data, $labels);
 magicConstants($data, $options);
 
-$maxNum = count($data) - 1;
+if(!count($data)) {
+    exit;
+}
+
+$maxNum = max(array_keys($data));
 $maxLen = strlen($maxNum);
 foreach ($data as $lineNum => $line) {
     echo str_pad($lineNum, $maxLen, " ", STR_PAD_LEFT) . " " . $line . "\n";
@@ -217,7 +221,7 @@ function getConstants(&$data, &$consts): void
         function ($matches) use (&$consts) {
             $name = "~" . $matches[1];
             if (isset($consts[$name])) {
-                echo "Constant $matches[1] already defined\n";
+                logIt("Constant $matches[1] already defined");
                 exit(1);
             }
             $consts[$name] = $matches[2];
@@ -259,8 +263,8 @@ function doInclude(&$data, $inputFile): void
                 continue;
             }
             foreach ($matches[2] as $matchNum => $match) {
-                if (!is_file($match)) {
-                    echo "'$match' is not a file\n";
+                if (!is_file(realpath(dirname($inputFile) . "/" . $match))) {
+                    logIt("'$match' is not a file");
                     exit(1);
                 }
                 $nextFile = realpath(dirname($inputFile) . "/" . $match);
@@ -275,15 +279,16 @@ function doInclude(&$data, $inputFile): void
                 if ($matches[1][$matchNum] === "|") {
                     $output = null;
                     $retCode = null;
-                    exec("timeout 10 $nextFile", $output, $retCode);
+                    $cmd=escapeshellarg(realpath(dirname($inputFile) . "/" . $match));
+                    exec("timeout 10 $cmd", $output, $retCode);
                     if ($retCode !== 0) {
-                        echo "Error $retCode executing $nextFile, aborting\n";
+                        logIt( "Error $retCode executing $nextFile, aborting");
                         exit($retCode);
                     }
                     $replacement = implode("\n", $output);
                 } else {
                     if (!is_readable($nextFile)) {
-                        echo "file $nextFile is not readable\n";
+                        logIt( "file $nextFile is not readable");
                         exit(1);
                     }
                     $replacement = file_get_contents($nextFile);
@@ -342,7 +347,7 @@ function varNameFromInt($int, $noBlacklistOffset = false): string
     $higher = $int % strlen($chars[1]);
     $lower = floor($int / strlen($chars[1]));
     if ($lower >= strlen($chars[0])) {
-        echo "too much vars used!\n";
+        logIt( "too much vars used!");
         exit(1);
     }
     $name = substr($chars[0], $lower, 1) . substr($chars[1], $higher, 1);
@@ -430,6 +435,19 @@ class Options
         "ARG" => 3,
     ];
     private array $optionNames = ["startLineNumber", "lineStep"];
+    private array $optionConfig =[
+            "startLineNumber" => [
+                "type" => "int",
+                "min" => 0,
+                "max" => 0xffffff,
+            ],
+        "lineStep" => [
+                "type" => "int",
+                "min" => 1,
+                "max" => 0xffffff,
+        ]
+
+    ];
 
     private array $options = [
         "startLineNumber" => 0,
@@ -484,11 +502,31 @@ class Options
      */
     private function set($name, $value, $weight): void
     {
+        $myConfig = $this->optionConfig[$name];
+
+        switch ($myConfig["type"]) {
+            case 'int':
+                $value = (int) $value;
+                break;
+                default:
+                    throw new Exception("Invalid type: $myConfig[type]");
+                    break;
+        }
+
+        if(isset($myConfig["min"]) && $value < $myConfig["min"]) {
+            throw new Exception("Value for $name must be at least $myConfig[min]");
+        }
+        if(isset($myConfig["max"]) && $value > $myConfig["max"]) {
+            throw new Exception("Value for $name must be at most $myConfig[max]");
+        }
+
+
+
         if (!in_array($name, $this->optionNames)) {
             throw new Exception("Invalid option name: $name");
         }
         if ($this->optionsWeight[$name] < $weight) {
-            $this->options[$name] = $value;
+            $this->options[$name] = intval($value);
             $this->optionsWeight[$name] = $weight;
         } else {
             logIt(
