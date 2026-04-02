@@ -23,7 +23,7 @@ if [ -z "$1" ]; then
 	echo All is fine
 
 else
-
+  #set -x
 	testResultsDir="$2"
 	testName="$(basename "$1")"
 	pad=" -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  - "
@@ -43,7 +43,13 @@ else
 		exit 1
 	}
 
-	../../baspp input.bas >"$testResultsDir/$testName.output" 2>"$testResultsDir/$testName.stderr"
+	../../baspp input.bas >"$testResultsDir/$testName.output" 2>"$testResultsDir/$testName.stderr" || {
+	      echo "  Test $testName failed" >"$testResultsDir/$testName.error"
+    echo "❌ Failed with error"
+    cat "$testResultsDir/$testName.stderr" | tail -n-2 | sed 's/^/  /'
+    touch "$testResultsDir/ERROR"
+    exit 1
+	}
 
 	diff -u output.bas "$testResultsDir/$testName.output" >"$testResultsDir/$testName.diff" || {
 		echo "  Test $testName failed" >"$testResultsDir/$testName.error"
@@ -54,4 +60,5 @@ else
 	}
 
 	echo "️️️✅"
+
 fi
